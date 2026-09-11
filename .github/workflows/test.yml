@@ -1,0 +1,53 @@
+name: CI Pipeline
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        if: ${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json') != '' }}
+        run: npm ci
+
+      - name: Skip install when no lockfile is present
+        if: ${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json') == '' }}
+        run: echo "No npm lockfile found; skipping dependency install."
+
+      - name: Lint
+        if: ${{ hashFiles('package.json', 'eslint.config.js', 'eslint.config.cjs', 'eslint.config.mjs', '.eslintrc', '.eslintrc.json', '.eslintrc.yml', '.eslintrc.yaml') != '' }}
+        run: npm run lint
+
+      - name: Build or type check
+        if: ${{ hashFiles('package.json', 'tsconfig.json', 'tsconfig.build.json') != '' }}
+        run: npm run build
+
+      - name: Test
+        if: ${{ hashFiles('package.json', '**/*.test.ts', '**/*.test.tsx', '**/*.test.js', '**/*.spec.ts', '**/*.spec.tsx', '**/*.spec.js') != '' }}
+        run: npm run test
+
+      - name: Summary
+        if: always()
+        run: echo "TypeScript CI: node ${{ matrix.node-version }} completed." >> "$GITHUB_STEP_SUMMARY"
